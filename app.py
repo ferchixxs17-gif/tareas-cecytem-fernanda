@@ -19,6 +19,38 @@ app.secret_key = os.getenv("SECRET_KEY", "clave-solo-para-desarrollo")
 
 PRIORIDADES = ("Baja", "Media", "Alta")
 
+def init_db():
+    conexion = obtener_conexion()
+    try:
+        with conexion.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS categorias (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nombre VARCHAR(100) NOT NULL UNIQUE
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS tareas (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    titulo VARCHAR(255) NOT NULL,
+                    descripcion TEXT,
+                    categoria_id INT,
+                    prioridad ENUM('Baja','Media','Alta') DEFAULT 'Media',
+                    fecha_limite DATE NULL,
+                    completada TINYINT(1) DEFAULT 0,
+                    creada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+                )
+            """)
+            cur.execute("""
+                INSERT IGNORE INTO categorias (nombre) VALUES
+                ('Escuela'), ('Casa'), ('Personal')
+            """)
+        conexion.commit()
+    finally:
+        conexion.close()
+
+init_db()
 
 @app.route("/")
 def index():
@@ -49,7 +81,6 @@ def index():
         pendientes=pendientes,
     )
 
-
 @app.route("/agregar", methods=["POST"])
 def agregar():
     titulo = request.form.get("titulo", "").strip()
@@ -65,7 +96,6 @@ def agregar():
     conexion = obtener_conexion()
     try:
         with conexion.cursor() as cur:
-            # Consulta parametrizada (%s): evita inyección SQL
             cur.execute(
                 """
                 INSERT INTO tareas (titulo, descripcion, categoria_id, prioridad, fecha_limite)
@@ -74,13 +104,12 @@ def agregar():
                 (titulo, descripcion, int(categoria_id), prioridad, fecha_limite),
             )
             nuevo_id = cur.lastrowid
-        conexion.commit()  # sin commit el registro NO se guarda
+        conexion.commit()
     finally:
         conexion.close()
 
     flash(f"Tarea #{nuevo_id} guardada en la base de datos.", "ok")
     return redirect(url_for("index"))
-
 
 @app.route("/completar/<int:tarea_id>", methods=["POST"])
 def completar(tarea_id):
@@ -96,7 +125,6 @@ def completar(tarea_id):
         conexion.close()
     return redirect(url_for("index"))
 
-
 @app.route("/eliminar/<int:tarea_id>", methods=["POST"])
 def eliminar(tarea_id):
     conexion = obtener_conexion()
@@ -109,11 +137,8 @@ def eliminar(tarea_id):
     flash(f"Tarea #{tarea_id} eliminada.", "ok")
     return redirect(url_for("index"))
 
-
 @app.route("/registros")
 def registros():
-    """Verificación: muestra las filas tal como están guardadas en la tabla tareas.
-    Cada vez que se abre, se consulta de nuevo la base de datos."""
     buscar = request.args.get("buscar", "").strip()
     conexion = obtener_conexion()
     try:
@@ -132,10 +157,8 @@ def registros():
         conexion.close()
     return render_template("registros.html", filas=filas, info=info, buscar=buscar)
 
-
 @app.route("/salud")
 def salud():
-    """Evidencia de conexión: servidor, versión, base de datos y SSL."""
     try:
         conexion = obtener_conexion()
         try:
@@ -152,10 +175,8 @@ def salud():
         finally:
             conexion.close()
         return render_template("salud.html", ok=True, info=info)
-    except Exception as error:  # se muestra el error para poder diagnosticarlo
+    except Exception as error:
         return render_template("salud.html", ok=False, error=repr(error)), 500
 
-
 if __name__ == "__main__":
-    # Solo para pruebas locales. En Render la app la arranca Gunicorn.
     app.run(debug=True)
